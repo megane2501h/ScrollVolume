@@ -1,0 +1,9 @@
+# ビルド成果物
+*.exe
+*.pdb
+
+# 実行時に作られるファイル
+ScrollVolume.ini
+ScrollVolume.log
+test.txt
+shots/
