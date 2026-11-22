@@ -24,22 +24,33 @@ namespace ScrollVolume
         readonly StringBuilder classBuf = new StringBuilder(64);
         volatile Settings settings;
         volatile int[] trayRect; // {left, top, right, bottom}
+        volatile int[] ownRect;  // 表示中のミキサー画面（その上では何もしない）
+        readonly MiddleClickGate middle = new MiddleClickGate();
         IntPtr hook = IntPtr.Zero;
         uint threadId;
         Thread thread;
 
-        public WheelHook(IntPtr targetHwnd, uint targetMessage, Settings s)
+        readonly uint clickMsg;
+        readonly Func<POINT, bool> isTaskbarFn;
+        readonly Func<ModifierKey, bool> modifierFn = ModifierDown;
+
+        /// <param name="targetMessage">ホイール（wParam=回転量, lParam=場所）</param>
+        /// <param name="clickMessage">ホイールクリック（lParam=場所）</param>
+        public WheelHook(IntPtr targetHwnd, uint targetMessage, uint clickMessage, Settings s)
         {
             target = targetHwnd;
             targetMsg = targetMessage;
+            clickMsg = clickMessage;
             settings = s;
             proc = HookProc;
+            isTaskbarFn = IsTaskbar;
         }
 
         public void UpdateSettings(Settings s) { settings = s; }
         public bool IsInstalled { get { return hook != IntPtr.Zero; } }
         public bool IsThreadAlive { get { return thread != null && thread.IsAlive; } }
         public void SetTrayRect(int[] rect) { trayRect = rect; }
+        public void SetOwnRect(Rectangle r) { ownRect = r.IsEmpty ? null : new[] { r.Left, r.Top, r.Right, r.Bottom }; }
 
         public void Start()
         {
@@ -100,17 +111,34 @@ namespace ScrollVolume
         {
             try
             {
-                if (nCode >= 0 && wParam.ToInt32() == Native.WM_MOUSEWHEEL)
+                int msg = wParam.ToInt32();
+                if (nCode >= 0 && msg == Native.WM_MBUTTONUP && middle.Up())
+                    return new IntPtr(1); // 押したときに横取りしたボタンは、離したときも渡さない
+                if (nCode >= 0 && (msg == Native.WM_MOUSEWHEEL || msg == Native.WM_MBUTTONDOWN))
                 {
                     MSLLHOOKSTRUCT info = (MSLLHOOKSTRUCT)Marshal.PtrToStructure(lParam, typeof(MSLLHOOKSTRUCT));
                     Settings s = settings;
-                    int zone = HitZone(info.pt, s);
-                    if (s.Debug) Log.Write("wheel pt=" + info.pt.X + "," + info.pt.Y + " zone=" + zone);
-                    if (zone != 0)
+                    bool active = !(s.GameGuard && GameDetect.Active) && !InRect(ownRect, info.pt);
+                    if (msg == Native.WM_MOUSEWHEEL)
                     {
-                        short delta = (short)(info.mouseData >> 16);
-                        Native.PostMessage(target, targetMsg, new IntPtr(delta), new IntPtr(zone));
-                        return new IntPtr(1); // 下のウィンドウには渡さない
+                        int zone = active ? HitZone(info.pt, s, RealMonitors, isTaskbarFn, trayRect, modifierFn) : 0;
+                        if (s.Debug) Log.Write("wheel pt=" + info.pt.X + "," + info.pt.Y + " zone=" + zone);
+                        if (zone != 0)
+                        {
+                            short delta = (short)(info.mouseData >> 16);
+                            Native.PostMessage(target, targetMsg, new IntPtr(delta), new IntPtr(zone));
+                            return new IntPtr(1); // 下のウィンドウには渡さない
+                        }
+                    }
+                    else
+                    {
+                        int zone = active ? MiddleClickZone(info.pt, s, RealMonitors, isTaskbarFn, trayRect, modifierFn) : 0;
+                        if (s.Debug) Log.Write("middle pt=" + info.pt.X + "," + info.pt.Y + " zone=" + zone);
+                        if (middle.Down(zone != 0))
+                        {
+                            Native.PostMessage(target, clickMsg, IntPtr.Zero, new IntPtr(zone));
+                            return new IntPtr(1);
+                        }
                     }
                 }
             }
@@ -118,21 +146,37 @@ namespace ScrollVolume
             return Native.CallNextHookEx(hook, nCode, wParam, lParam);
         }
 
-        static readonly IMonitorLayout RealMonitors = new RealMonitorLayout();
-
-        int HitZone(POINT pt, Settings s)
+        static bool InRect(int[] r, POINT pt)
         {
-            int z = HitScreen(pt, s, RealMonitors);
-            if (z != 0) return z;
-            if (s.TrayIcon)
-            {
-                int[] r = trayRect;
-                if (r != null && pt.X >= r[0] && pt.X < r[2] && pt.Y >= r[1] && pt.Y < r[3]) return TRAY;
-            }
-            if (s.Taskbar && ModifierDown(s.TaskbarModifier) && IsTaskbar(pt)) return TASKBAR;
-            return 0;
+            return r != null && pt.X >= r[0] && pt.X < r[2] && pt.Y >= r[1] && pt.Y < r[3];
         }
 
+        static readonly IMonitorLayout RealMonitors = new RealMonitorLayout();
+
+        /// <summary>
+        /// ホイールを受け付ける場所の判定。
+        /// 1. ScrollVolume のアイコンの上（「アイコンの上」がオンなら）
+        /// 2. タスクバーの上なら、四隅・端と重なっていても「タスクバー」の設定（修飾キーを含む）だけで決める
+        ///    （タスクバーを上・左・右に移動していても同じ。位置ではなくその場所のウィンドウで判定する）
+        /// 3. 四隅 → 端
+        /// </summary>
+        public static int HitZone(POINT pt, Settings s, IMonitorLayout layout, Func<POINT, bool> onTaskbar, int[] tray, Func<ModifierKey, bool> modifierDown)
+        {
+            if (s.TrayIcon && InRect(tray, pt)) return TRAY;
+            int c = HitCorner(pt, s, layout);
+            int e = c != 0 ? 0 : HitEdge(pt, s, layout);
+            if ((c != 0 || e != 0 || s.Taskbar) && onTaskbar(pt)) // 画面の中ほどではウィンドウを調べない（軽くするため）
+                return s.Taskbar && modifierDown(s.TaskbarModifier) ? TASKBAR : 0;
+            return c != 0 ? c : e;
+        }
+
+        /// <summary>ホイールクリックでミュートする場所（0 ならそのまま下のウィンドウへ）。アイコンの上は、アイコン自体のクリック設定に任せる。</summary>
+        public static int MiddleClickZone(POINT pt, Settings s, IMonitorLayout layout, Func<POINT, bool> onTaskbar, int[] tray, Func<ModifierKey, bool> modifierDown)
+        {
+            if (InRect(tray, pt)) return 0;
+            int zone = HitZone(pt, s, layout, onTaskbar, tray, modifierDown);
+            return MiddleClickMutes(zone, s) ? zone : 0;
+        }
         static bool ModifierDown(ModifierKey k)
         {
             switch (k)
@@ -155,6 +199,17 @@ namespace ScrollVolume
             return c == "Shell_TrayWnd" || c == "Shell_SecondaryTrayWnd";
         }
 
+        /// <summary>
+        /// その場所でのホイールクリックをミュートに使うか。トレイのアイコンは対象外（アイコン自体のクリック設定に任せる）。
+        /// タスクバーの上かどうか・修飾キーは HitZone が決めるので、端と重なっていてもタスクバーの設定が優先される。
+        /// </summary>
+        public static bool MiddleClickMutes(int zone, Settings s)
+        {
+            if (IsCorner(zone) || IsEdge(zone)) return s.MiddleClickMute;
+            if (zone == TASKBAR) return s.MiddleClickTaskbar;
+            return false;
+        }
+
         public static bool IsCorner(int zone) { return zone >= TL && zone <= BR; }
         public static bool IsEdge(int zone) { return zone >= TOP && zone <= RIGHT; }
 
@@ -164,6 +219,12 @@ namespace ScrollVolume
         /// （カーソルが止まらず通り抜けてしまう場所なので）。
         /// </summary>
         public static int HitScreen(POINT pt, Settings s, IMonitorLayout layout)
+        {
+            int c = HitCorner(pt, s, layout);
+            return c != 0 ? c : HitEdge(pt, s, layout);
+        }
+
+        public static int HitCorner(POINT pt, Settings s, IMonitorLayout layout)
         {
             Rectangle r;
             if (!layout.TryGetMonitor(pt.X, pt.Y, out r)) return 0;
@@ -191,7 +252,13 @@ namespace ScrollVolume
                     if (!junction) return c;
                 }
             }
+            return 0;
+        }
 
+        public static int HitEdge(POINT pt, Settings s, IMonitorLayout layout)
+        {
+            Rectangle r;
+            if (!layout.TryGetMonitor(pt.X, pt.Y, out r)) return 0;
             if (s.Edges)
             {
                 int e = s.EdgeSize;
@@ -202,6 +269,57 @@ namespace ScrollVolume
                 if (s.EdgeRight && pt.X >= r.Right - e && !(outer && layout.OnMonitor(r.Right, pt.Y))) return RIGHT;
             }
             return 0;
+        }
+    }
+
+    /// <summary>
+    /// 前面のアプリがゲーム（全画面・タイトルバーなし、ブラウザーや動画プレーヤー以外）かどうか。
+    /// UI スレッドから定期的に Update し、フックは Active を読むだけ。
+    /// </summary>
+    static class GameDetect
+    {
+        public static volatile bool Active;
+        static readonly StringBuilder cls = new StringBuilder(64);
+        static uint lastPid;
+        static string lastName;
+        static readonly uint OwnPid = (uint)System.Diagnostics.Process.GetCurrentProcess().Id;
+
+        public static void Update()
+        {
+            try { Active = Evaluate(); }
+            catch { Active = false; }
+        }
+
+        static bool Evaluate()
+        {
+            int state;
+            bool d3d = Native.SHQueryUserNotificationState(out state) == 0 && state == Native.QUNS_RUNNING_D3D_FULL_SCREEN;
+            IntPtr w = Native.GetForegroundWindow();
+            if (w == IntPtr.Zero) return d3d;
+            RECT wr;
+            if (!Native.GetWindowRect(w, out wr)) return d3d;
+            IntPtr mon = Native.MonitorFromWindow(w, Native.MONITOR_DEFAULTTONEAREST);
+            MONITORINFO mi = new MONITORINFO();
+            mi.cbSize = Marshal.SizeOf(typeof(MONITORINFO));
+            if (!Native.GetMonitorInfo(mon, ref mi)) return d3d;
+            cls.Length = 0;
+            Native.GetClassName(w, cls, cls.Capacity);
+            bool caption = (Native.GetWindowLong(w, Native.GWL_STYLE) & Native.WS_CAPTION) == Native.WS_CAPTION;
+            bool full = GameRules.IsFullscreen(
+                Rectangle.FromLTRB(wr.Left, wr.Top, wr.Right, wr.Bottom),
+                Rectangle.FromLTRB(mi.rcMonitor.Left, mi.rcMonitor.Top, mi.rcMonitor.Right, mi.rcMonitor.Bottom),
+                caption, Native.IsZoomed(w), cls.ToString());
+            if (!full && !d3d) return false;
+            uint pid;
+            Native.GetWindowThreadProcessId(w, out pid);
+            if (pid != lastPid)
+            {
+                lastPid = pid;
+                string path = Native.ProcessPath(pid);
+                lastName = path == null ? null : System.IO.Path.GetFileNameWithoutExtension(path);
+            }
+            if (pid == OwnPid) return false;
+            return GameRules.IsGame(d3d, full, lastName);
         }
     }
 

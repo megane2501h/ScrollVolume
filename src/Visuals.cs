@@ -25,6 +25,63 @@ namespace ScrollVolume
             catch { return false; }
         }
 
+        public static bool AppsUseLightTheme()
+        {
+            try
+            {
+                using (RegistryKey k = Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize"))
+                {
+                    object v = k == null ? null : k.GetValue("AppsUseLightTheme");
+                    return !(v is int) || (int)v == 1;
+                }
+            }
+            catch { return true; }
+        }
+
+        /// <summary>Windows のアクセントカラー。取れなければ既定の青。</summary>
+        public static Color SystemAccent()
+        {
+            try
+            {
+                using (RegistryKey k = Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\DWM"))
+                {
+                    object v = k == null ? null : k.GetValue("AccentColor");
+                    if (v is int)
+                    {
+                        int abgr = (int)v;
+                        return Color.FromArgb(abgr & 0xFF, (abgr >> 8) & 0xFF, (abgr >> 16) & 0xFF);
+                    }
+                }
+            }
+            catch { }
+            return Accent;
+        }
+
+        public static Color Mix(Color a, Color b, float t)
+        {
+            t = Math.Max(0f, Math.Min(1f, t));
+            return Color.FromArgb(
+                (int)Math.Round(a.R + (b.R - a.R) * t),
+                (int)Math.Round(a.G + (b.G - a.G) * t),
+                (int)Math.Round(a.B + (b.B - a.B) * t));
+        }
+
+        static string glyphFont;
+
+        /// <summary>アイコン用のフォント（Windows 11 は Segoe Fluent Icons、10 は Segoe MDL2 Assets）。</summary>
+        public static string GlyphFontName()
+        {
+            if (glyphFont != null) return glyphFont;
+            glyphFont = "Segoe MDL2 Assets";
+            try
+            {
+                using (Font f = new Font("Segoe Fluent Icons", 10f))
+                    if (f.Name == "Segoe Fluent Icons") glyphFont = f.Name;
+            }
+            catch { }
+            return glyphFont;
+        }
+
         public static float ScaleAt(Point p)
         {
             try
@@ -140,6 +197,7 @@ namespace ScrollVolume
     {
         int percent;
         bool muted;
+        string label; // デバイス切り替えのときはデバイス名を出す
         float scale = 1f;
         readonly Timer hideTimer = new Timer();
 
@@ -168,11 +226,23 @@ namespace ScrollVolume
             }
         }
 
+        public void ShowText(Point cursor, int zone, string text, int durationMs)
+        {
+            label = text;
+            Place(cursor, zone, durationMs);
+        }
+
         public void ShowAt(Point cursor, int zone, int pct, bool isMuted, int durationMs)
         {
-            hideTimer.Interval = Math.Max(100, durationMs);
+            label = null;
             percent = pct;
             muted = isMuted;
+            Place(cursor, zone, durationMs);
+        }
+
+        void Place(Point cursor, int zone, int durationMs)
+        {
+            hideTimer.Interval = Math.Max(100, durationMs);
             scale = Theme.ScaleAt(cursor);
             Rectangle b = ComputeBounds(cursor, zone, Screen.FromPoint(cursor).WorkingArea, scale);
             IntPtr hwnd = Handle; // ハンドルを確実に作る
@@ -219,6 +289,15 @@ namespace ScrollVolume
             int w = ClientSize.Width, h = ClientSize.Height;
             using (Pen border = new Pen(Color.FromArgb(70, 70, 70))) g.DrawRectangle(border, 0, 0, w - 1, h - 1);
 
+            if (label != null)
+            {
+                using (Font sys = SystemFonts.MessageBoxFont)
+                using (Font f = new Font(sys.Name, 14 * scale, FontStyle.Bold, GraphicsUnit.Pixel))
+                    TextRenderer.DrawText(g, label, f, new Rectangle((int)(12 * scale), 0, w - (int)(24 * scale), h), Color.White,
+                        TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.SingleLine | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
+                return;
+            }
+
             Color accent = muted ? Theme.MuteRed : Color.FromArgb(76, 160, 255);
             float pad = 14 * scale, textW = 70 * scale;
             using (Font f = new Font("Segoe UI", 20 * scale, FontStyle.Bold, GraphicsUnit.Pixel))
@@ -226,7 +305,7 @@ namespace ScrollVolume
             using (SolidBrush tb = new SolidBrush(Color.White))
             using (StringFormat sf = new StringFormat { Alignment = StringAlignment.Far, LineAlignment = StringAlignment.Center })
             {
-                g.DrawString(muted ? "ミュート" : percent.ToString(), muted ? fs : f, tb, new RectangleF(w - pad - textW, 0, textW, h), sf);
+                g.DrawString(muted ? L.T("ミュート", "Muted") : percent.ToString(), muted ? fs : f, tb, new RectangleF(w - pad - textW, 0, textW, h), sf);
             }
 
             float barX = pad, barW = w - pad * 3 - textW, barH = 6 * scale, barY = (h - barH) / 2f;
@@ -238,116 +317,6 @@ namespace ScrollVolume
         {
             if (disposing) hideTimer.Dispose();
             base.Dispose(disposing);
-        }
-    }
-
-    /// <summary>トレイアイコンをクリックすると出る音量スライダー。</summary>
-    sealed class VolumePopup : Form
-    {
-        readonly TrackBar bar = new TrackBar();
-        readonly Label pctLabel = new Label();
-        readonly CheckBox muteBox = new CheckBox();
-        bool updating;
-        public int LastHiddenTick;
-
-        public event Action<int> VolumeChanged;
-        public event Action<bool> MuteChanged;
-        public event Action OpenMixer;
-
-        public VolumePopup()
-        {
-            FormBorderStyle = FormBorderStyle.None;
-            ShowInTaskbar = false;
-            TopMost = true;
-            StartPosition = FormStartPosition.Manual;
-            KeyPreview = true;
-            Font = SystemFonts.MessageBoxFont;
-            BackColor = Color.FromArgb(43, 43, 43);
-            ForeColor = Color.White;
-            Padding = new Padding(1);
-
-            bar.Minimum = 0; bar.Maximum = 100;
-            bar.TickFrequency = 10; bar.SmallChange = 1; bar.LargeChange = 10;
-            bar.TickStyle = TickStyle.None;
-            bar.AutoSize = false;
-            bar.ValueChanged += delegate
-            {
-                pctLabel.Text = bar.Value.ToString();
-                if (!updating && VolumeChanged != null) VolumeChanged(bar.Value);
-            };
-
-            pctLabel.Font = new Font("Segoe UI", 16f, FontStyle.Bold);
-            pctLabel.TextAlign = ContentAlignment.MiddleRight;
-            pctLabel.AutoSize = false;
-
-            muteBox.Text = "ミュート";
-            muteBox.AutoSize = true;
-            muteBox.CheckedChanged += delegate { if (!updating && MuteChanged != null) MuteChanged(muteBox.Checked); };
-
-            LinkLabel mixer = new LinkLabel();
-            mixer.Text = "音量ミキサー";
-            mixer.AutoSize = true;
-            mixer.LinkColor = Color.FromArgb(120, 180, 255);
-            mixer.ActiveLinkColor = mixer.LinkColor;
-            mixer.LinkClicked += delegate { Hide(); if (OpenMixer != null) OpenMixer(); };
-
-            Controls.Add(bar); Controls.Add(pctLabel); Controls.Add(muteBox); Controls.Add(mixer);
-
-            float s = DeviceDpi / 96f;
-            ClientSize = new Size((int)(300 * s), (int)(84 * s));
-            bar.SetBounds((int)(10 * s), (int)(10 * s), (int)(220 * s), (int)(34 * s));
-            pctLabel.SetBounds((int)(230 * s), (int)(6 * s), (int)(60 * s), (int)(36 * s));
-            muteBox.Location = new Point((int)(14 * s), (int)(52 * s));
-            mixer.Location = new Point((int)(200 * s), (int)(54 * s));
-
-            Deactivate += delegate { HidePopup(); };
-            KeyDown += (o, e) => { if (e.KeyCode == Keys.Escape) HidePopup(); };
-        }
-
-        void HidePopup()
-        {
-            if (!Visible) return;
-            Hide();
-            LastHiddenTick = Environment.TickCount;
-        }
-
-        protected override void OnPaint(PaintEventArgs e)
-        {
-            base.OnPaint(e);
-            using (Pen p = new Pen(Color.FromArgb(80, 80, 80))) e.Graphics.DrawRectangle(p, 0, 0, ClientSize.Width - 1, ClientSize.Height - 1);
-        }
-
-        public void SetState(int pct, bool muted)
-        {
-            if (bar.Capture) return; // ドラッグ中は上書きしない
-            updating = true;
-            try
-            {
-                if (pct >= 0) bar.Value = Math.Max(0, Math.Min(100, pct));
-                muteBox.Checked = muted;
-            }
-            finally { updating = false; }
-        }
-
-        /// <summary>アンカー（トレイアイコン）の近くで、作業領域の内側に収まる位置。</summary>
-        public static Point ComputeLocation(Point c, Size size, Rectangle wa)
-        {
-            int x = c.X - size.Width / 2;
-            int y = c.Y >= wa.Bottom ? wa.Bottom - size.Height - 8 : (c.Y < wa.Top ? wa.Top + 8 : c.Y - size.Height - 16);
-            x = Math.Max(wa.Left, Math.Min(Math.Max(wa.Left + 8, Math.Min(wa.Right - size.Width - 8, x)), wa.Right - size.Width));
-            y = Math.Max(wa.Top, Math.Min(Math.Max(wa.Top + 8, Math.Min(wa.Bottom - size.Height - 8, y)), wa.Bottom - size.Height));
-            return new Point(x, y);
-        }
-
-        public void ShowNear(Rectangle anchor, int pct, bool muted)
-        {
-            SetState(pct, muted);
-            Point c = anchor.IsEmpty ? Cursor.Position : new Point(anchor.Left + anchor.Width / 2, anchor.Top + anchor.Height / 2);
-            Location = ComputeLocation(c, Size, Screen.FromPoint(c).WorkingArea);
-            Show();
-            Activate();
-            Native.SetForegroundWindow(Handle);
-            bar.Focus();
         }
     }
 }

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
 
@@ -218,7 +218,7 @@ namespace ScrollVolume
             return list;
         }
 
-        static string FriendlyName(IMMDevice d)
+        internal static string FriendlyName(IMMDevice d)
         {
             IPropertyStore ps = null;
             try
@@ -235,7 +235,7 @@ namespace ScrollVolume
             finally { if (ps != null) Marshal.ReleaseComObject(ps); }
         }
 
-        public bool SetDefaultDevice(string id)
+        public static bool SetDefaultDevice(string id)
         {
             object o = null;
             try

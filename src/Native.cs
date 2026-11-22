@@ -54,6 +54,7 @@ namespace ScrollVolume
         public const int WM_MBUTTONUP = 0x0208;
         public const int WM_MOUSEWHEEL = 0x020A;
         public const int WM_CONTEXTMENU = 0x007B;
+        public const int NIN_KEYSELECT = 0x0401;
         public const int WM_TIMER = 0x0113;
         public const int WM_QUIT = 0x0012;
         public const int WM_APP = 0x8000;
@@ -146,5 +147,92 @@ namespace ScrollVolume
         public static extern bool WTSRegisterSessionNotification(IntPtr hWnd, int dwFlags);
         [DllImport("wtsapi32.dll")]
         public static extern bool WTSUnRegisterSessionNotification(IntPtr hWnd);
+
+        // ホットキー
+        public const int WM_HOTKEY = 0x0312;
+        public const uint MOD_NOREPEAT = 0x4000;
+        [DllImport("user32.dll", SetLastError = true)]
+        public static extern bool RegisterHotKey(IntPtr hWnd, int id, uint fsModifiers, uint vk);
+        [DllImport("user32.dll")]
+        public static extern bool UnregisterHotKey(IntPtr hWnd, int id);
+
+        // ゲーム中の判定
+        [DllImport("user32.dll")]
+        public static extern IntPtr GetForegroundWindow();
+        [DllImport("user32.dll")]
+        public static extern bool GetWindowRect(IntPtr hWnd, out RECT lpRect);
+        [DllImport("user32.dll", EntryPoint = "GetWindowLong")]
+        public static extern int GetWindowLong(IntPtr hWnd, int nIndex);
+        public const int GWL_STYLE = -16;
+        public const int WS_CAPTION = 0x00C00000;
+        [DllImport("user32.dll")]
+        public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint processId);
+        [DllImport("user32.dll")]
+        public static extern IntPtr MonitorFromWindow(IntPtr hwnd, uint dwFlags);
+        [DllImport("shell32.dll")]
+        public static extern int SHQueryUserNotificationState(out int state);
+        public const int QUNS_RUNNING_D3D_FULL_SCREEN = 3;
+
+        // プロセス
+        public const uint PROCESS_QUERY_LIMITED_INFORMATION = 0x1000;
+        [DllImport("kernel32.dll", SetLastError = true)]
+        public static extern IntPtr OpenProcess(uint access, bool inherit, uint pid);
+        [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+        public static extern bool QueryFullProcessImageName(IntPtr hProcess, int flags, StringBuilder name, ref int size);
+        [DllImport("kernel32.dll")]
+        public static extern bool GetExitCodeProcess(IntPtr hProcess, out uint code);
+        [DllImport("kernel32.dll")]
+        public static extern bool CloseHandle(IntPtr h);
+
+        // 枠なしウィンドウの移動・角丸
+        public const int WM_NCLBUTTONDOWN = 0x00A1;
+        public const int HTCAPTION = 2;
+        public const int WM_EXITSIZEMOVE = 0x0232;
+        public const int WM_SIZING = 0x0214;
+        public const int WM_DPICHANGED = 0x02E0;
+        public const int WM_MBUTTONDOWN = 0x0207;
+        [DllImport("user32.dll")]
+        public static extern bool ReleaseCapture();
+        [DllImport("user32.dll")]
+        public static extern IntPtr SendMessage(IntPtr hWnd, int msg, IntPtr wParam, IntPtr lParam);
+        [DllImport("dwmapi.dll")]
+        public static extern int DwmSetWindowAttribute(IntPtr hwnd, int attr, ref int value, int size);
+        public const int DWMWA_WINDOW_CORNER_PREFERENCE = 33;
+        public const int DWMWA_USE_IMMERSIVE_DARK_MODE = 20;
+        [DllImport("user32.dll")]
+        public static extern short GetKeyState(int vKey);
+        [DllImport("user32.dll")]
+        public static extern uint MapVirtualKey(uint uCode, uint uMapType);
+        [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+        public static extern int GetKeyNameText(int lParam, StringBuilder lpString, int cchSize);
+        [DllImport("user32.dll")]
+        public static extern bool IsZoomed(IntPtr hWnd);
+
+        /// <summary>プロセスの実行ファイルのフルパス。取れなければ null。</summary>
+        public static string ProcessPath(uint pid)
+        {
+            IntPtr h = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid);
+            if (h == IntPtr.Zero) return null;
+            try
+            {
+                StringBuilder sb = new StringBuilder(1024);
+                int size = sb.Capacity;
+                return QueryFullProcessImageName(h, 0, sb, ref size) ? sb.ToString() : null;
+            }
+            finally { CloseHandle(h); }
+        }
+
+        /// <summary>プロセスがまだ動いているか（開けないプロセスは動いているとみなす）。</summary>
+        public static bool ProcessAlive(uint pid)
+        {
+            IntPtr h = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid);
+            if (h == IntPtr.Zero) return Marshal.GetLastWin32Error() == 5; // アクセス拒否 = 存在はする
+            try
+            {
+                uint code;
+                return !GetExitCodeProcess(h, out code) || code == 259; // STILL_ACTIVE
+            }
+            finally { CloseHandle(h); }
+        }
     }
 }
