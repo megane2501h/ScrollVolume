@@ -7,6 +7,8 @@ The tray icon shows the current volume as a number.
 
 [![Download ScrollVolume.zip](https://img.shields.io/badge/Download-ScrollVolume.zip-2ea44f?style=for-the-badge&logo=windows)](https://github.com/megane2501h/ScrollVolume/releases/latest/download/ScrollVolume.zip)
 
+https://github.com/user-attachments/assets/0e24d7d6-f7a7-41c6-be84-343fe5196cc1
+
 <img src="docs/images/mixer_en_dark.png" width="420" alt="ScrollVolume Mixer">
 
 ## Features

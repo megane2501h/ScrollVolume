@@ -7,6 +7,8 @@
 
 [![ScrollVolume.zip をダウンロード](https://img.shields.io/badge/%E3%83%80%E3%82%A6%E3%83%B3%E3%83%AD%E3%83%BC%E3%83%89-ScrollVolume.zip-2ea44f?style=for-the-badge&logo=windows)](https://github.com/megane2501h/ScrollVolume/releases/latest/download/ScrollVolume.zip)
 
+https://github.com/user-attachments/assets/cadb15d4-4feb-4d24-9001-939344190d28
+
 <img src="docs/images/mixer_ja_dark.png" width="420" alt="ScrollVolume ミキサー">
 
 ## 特長
