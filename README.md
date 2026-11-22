@@ -1,38 +1,81 @@
 # ScrollVolume
 
-画面の四隅・端、タスクバー、トレイのアイコンの上でマウスホイールを回すと、音量を変えられる Windows 用の常駐ツールです。
-トレイには今の音量を数字で表示します。
+**English** | [日本語](README.ja.md)
 
-*Turn the mouse wheel over a screen corner, edge, the taskbar or the tray icon to change the volume. Includes the ScrollVolume Mixer and global hotkeys. Japanese / English UI.*
+Change the volume on Windows by turning the mouse wheel over a screen corner, a screen edge, the taskbar or the tray icon.
+The tray icon shows the current volume as a number.
 
-## 使い方
-- `ScrollVolume.exe` を起動すると、トレイに音量の数字が出ます
-- 四隅・端・タスクバー・トレイのアイコンの上でホイールを回す → 音量
-  - ゆっくり回すと 1% ずつ、速く回すと 5% 区切りで進みます
-  - ホイールクリックでミュート
-- トレイのアイコンを左クリック → **ScrollVolume ミキサー**
-- 右クリック → メニュー（音量・ミュート・再生デバイス・設定など）
+[![Download](https://img.shields.io/github/v/release/megane2501h/ScrollVolume?label=Download&style=for-the-badge)](https://github.com/megane2501h/ScrollVolume/releases/latest/download/ScrollVolume.zip)
 
-## ScrollVolume ミキサー
-すべての再生デバイスと、音を出しているアプリを 1 つの画面に並べます。メーターで、どこから音が出ているかが一目で分かります。
-- 行の上でホイール＝音量、ホイールクリック＝ミュート
-- 「既定にする」で既定の再生デバイスを切り替え
-- 右上のボタンでウィンドウ表示に（大きさの変更・最前面に固定ができます）
+<img src="docs/images/mixer_en_dark.png" width="420" alt="ScrollVolume Mixer">
 
-## 設定
-右クリック →「ScrollVolume の設定」。反応する場所、1 目盛りの変化量、ホットキー、表示、自動起動などを変えられます。
-設定は `ScrollVolume.ini` に保存されます。
+## Features
+- **Wheel anywhere at the screen border** – corners, edges, the taskbar or the tray icon. No need to aim for a tiny slider.
+- **Fine and fast** – turn slowly for 1% steps; spin fast to jump in 5% steps (37 → 40 → 45 → 50%).
+- **Middle-click to mute.**
+- **ScrollVolume Mixer** – every playback device and every app playing sound in one panel, with level meters so you can see where the sound is coming from. Switch the default device with one click.
+- **Hotkeys** – volume up / down, toggle mute, open the mixer, next playback device.
+- **Game-friendly** – ignores the mouse and hides the volume bar while a full-screen game is running (hotkeys still work).
+- **Light and dark** – follows the Windows theme. Japanese and English UI.
+- **Small and portable** – a single ~220 KB `.exe`. No installer, no extra runtime.
 
-## ビルド
+## Download and run
+1. Download **[ScrollVolume.zip](https://github.com/megane2501h/ScrollVolume/releases/latest/download/ScrollVolume.zip)** from the [latest release](https://github.com/megane2501h/ScrollVolume/releases/latest).
+2. Extract it to a folder you can write to (for example `Documents\ScrollVolume`). Settings are saved next to the `.exe`.
+3. Run `ScrollVolume.exe`. The volume appears in the tray.
+
+> **"Windows protected your PC"?** The `.exe` is not code-signed, so SmartScreen may warn you the first time.
+> Click **More info → Run anyway**. You can also [build it yourself](#build) from the source.
+
+**Requirements:** Windows 10 or 11 (uses the .NET Framework 4.x that ships with Windows).
+
+## Usage
+| Where | Action | Result |
+|---|---|---|
+| Corners, edges, taskbar, tray icon | Wheel | Change the volume |
+| Corners, edges | Middle-click | Mute / unmute |
+| Tray icon | Left-click | Open the ScrollVolume Mixer |
+| Tray icon | Middle-click | Mute / unmute |
+| Tray icon | Right-click | Menu (volume, mute, playback device, settings, …) |
+
+### ScrollVolume Mixer
+- Wheel over a row to change that device's or app's volume; middle-click to mute it.
+- **Set as default** switches the default playback device.
+- The button at the top right turns the pop-up into a normal window that you can resize and keep on top.
+
+## Settings
+Right-click the tray icon → **ScrollVolume settings**.
+
+<img src="docs/images/settings_en_1.png" width="380" alt="ScrollVolume settings">
+
+- **Areas** – which corners and edges react, how wide they are, and whether the taskbar needs a modifier key (Ctrl / Shift / Alt).
+- **Controls** – amount per notch, behavior when spun fast, reverse direction, middle-click and tray-icon click actions.
+- **Hotkeys** – click a box and press the keys.
+- **Display** – tray icon style (number / number on tile / bar), text color, the volume bar.
+- **General** – start with Windows, run as administrator, game detection, language.
+
+Settings are stored in `ScrollVolume.ini` next to the `.exe`.
+
+**Run as administrator:** Windows does not pass mouse input from administrator apps (Task Manager, some games) to normal apps. Turn this on if the wheel stops working over such windows. ScrollVolume registers a Task Scheduler task so it can start elevated without a UAC prompt every time.
+
+## Uninstall
+1. In the settings, turn off **Start with Windows** and **Run as administrator** (this removes the startup entry and the scheduled task).
+2. Exit ScrollVolume from the tray menu and delete its folder.
+
+## Build
 ```powershell
 .\build.ps1
 ```
-Windows に入っている .NET Framework 4.x の `csc.exe` を使います（追加のインストールは不要）。
+Uses `csc.exe` from the .NET Framework 4.x that comes with Windows – nothing else to install.
+If ScrollVolume is running, build to another file: `.\build.ps1 -Out .\out\ScrollVolume.exe`.
 
-## テスト
+### Tests
 ```powershell
 Start-Process .\ScrollVolume.exe -ArgumentList '--test','shots' -RedirectStandardOutput test.txt -Wait -NoNewWindow; Get-Content test.txt -Encoding utf8
 ```
-`shots` フォルダーに画面のスクリーンショットも出力します。
+Also writes screenshots of the UI to the `shots` folder.
 
-用語の表記は [TERMS.md](TERMS.md) にまとめています。
+UI wording is listed in [TERMS.md](TERMS.md) (Japanese).
+
+## License
+[MIT](LICENSE)

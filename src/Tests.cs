@@ -1560,7 +1560,7 @@ namespace ScrollVolume
             Console.WriteLine("      (このテストの権限: " + (elevated ? "管理者" : "通常") + ")");
             Check("権限の判定で例外が出ない", true);
 
-            string path = @"H:\_AI\Projects\テスト & 'フォルダ' (1)\ScrollVolume.exe";
+            string path = @"C:\Tools\テスト & 'フォルダ' (1)\ScrollVolume.exe";
             string xml = ElevatedTask.BuildXml(path, @"PC\ユーザー");
             System.Xml.XmlDocument doc = new System.Xml.XmlDocument();
             bool parsed = true;

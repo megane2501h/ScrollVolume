@@ -7,3 +7,6 @@ ScrollVolume.ini
 ScrollVolume.log
 test.txt
 shots/
+
+# リリース用のビルド
+out/
