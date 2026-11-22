@@ -5,7 +5,7 @@
 Change the volume on Windows by turning the mouse wheel over a screen corner, a screen edge, the taskbar or the tray icon.
 The tray icon shows the current volume as a number.
 
-[![Download](https://img.shields.io/github/v/release/megane2501h/ScrollVolume?label=Download&style=for-the-badge)](https://github.com/megane2501h/ScrollVolume/releases/latest/download/ScrollVolume.zip)
+[![Download ScrollVolume.zip](https://img.shields.io/badge/Download-ScrollVolume.zip-2ea44f?style=for-the-badge&logo=windows)](https://github.com/megane2501h/ScrollVolume/releases/latest/download/ScrollVolume.zip)
 
 <img src="docs/images/mixer_en_dark.png" width="420" alt="ScrollVolume Mixer">
 

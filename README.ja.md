@@ -5,7 +5,7 @@
 画面の四隅・端、タスクバー、トレイのアイコンの上でマウスホイールを回すと、音量を変えられる Windows 用の常駐ツールです。
 トレイには今の音量を数字で表示します。
 
-[![ダウンロード](https://img.shields.io/github/v/release/megane2501h/ScrollVolume?label=%E3%83%80%E3%82%A6%E3%83%B3%E3%83%AD%E3%83%BC%E3%83%89&style=for-the-badge)](https://github.com/megane2501h/ScrollVolume/releases/latest/download/ScrollVolume.zip)
+[![ScrollVolume.zip をダウンロード](https://img.shields.io/badge/%E3%83%80%E3%82%A6%E3%83%B3%E3%83%AD%E3%83%BC%E3%83%89-ScrollVolume.zip-2ea44f?style=for-the-badge&logo=windows)](https://github.com/megane2501h/ScrollVolume/releases/latest/download/ScrollVolume.zip)
 
 <img src="docs/images/mixer_ja_dark.png" width="420" alt="ScrollVolume ミキサー">
 
