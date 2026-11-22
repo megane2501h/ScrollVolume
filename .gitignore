@@ -10,3 +10,9 @@ shots/
 
 # リリース用のビルド
 out/
+
+# デモ動画の生成物
+tools/demo-video/*.wav
+tools/demo-video/*.mp4
+tools/demo-video/*.png
+tools/demo-video/__pycache__/
